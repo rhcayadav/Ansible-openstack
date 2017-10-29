@@ -1,0 +1,35 @@
+---
+- name: install openstack using ansible
+  hosts: openstack
+  tasks:
+  - name: Install mariadb-galera-server  package
+    yum:
+      name: mariadb-galera-server
+      state: installed
+  - iptables: 
+      chain: INPUT
+      protocol: tcp
+      action: append
+      match: mutiport
+      destination_port: 3306
+      jump: ACCEPT
+    notify: restart iptables
+   -name: restart mariadb service
+    service:
+      name: mariadb
+      state: restarted
+  handlers:
+   -name: restart iptables service
+    service:
+      name: iptables
+      state: restarted
+    
+  
+    command: iptables -A INPUT -p tcp -m multiport --dports 3306 -j ACCEPT
+#  - name: Install mariadb(SQL database)  packages
+#    yum: name={{item}} state=removed
+#    with_items:
+#         - mariadb
+#         - mariadb-server
+#         - python2-PyMySQL
+
