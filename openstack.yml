@@ -25,7 +25,7 @@
       state: restarted
     
   
-    command: iptables -A INPUT -p tcp -m multiport --dports 3306 -j ACCEPT
+#    command: iptables -A INPUT -p tcp -m multiport --dports 3306 -j ACCEPT
 #  - name: Install mariadb(SQL database)  packages
 #    yum: name={{item}} state=removed
 #    with_items:
