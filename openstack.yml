@@ -84,16 +84,21 @@
          - glance
          - ceilometer
          - neutron
-  - name: Install the OpenStack Command Line Client
-     yum:
-      name: python-openstackclient
-      state: installed
-  - name: Install identity service packages
-     yum:
+  - name: Install the OpenStack services softwares
+    yum:
       name: {{item}}
       state: installed
       with_items:
-           - openstack-keystone 
+           - python-openstackclient
+           - openstack-glance
+           - 
+           - 
+           - 
+           - 
+           - 
+           - 
+           - 
+           - openstack-keystone
            - openstack-utils
            - openstack-selinux
            - httpd
@@ -126,6 +131,7 @@
          - ceilometer
          - neutron
          - keystone
+
   - name: Configuring the Identity Service SQL Database Connection
     command: openstack-config --set /etc/keystone/keystone.conf sql connection mysql://keystone:{{OPENSTACK_USERS_PASS}}@{{ansible_hostname}}/keystone
     register: keystoneconfoutput
@@ -158,6 +164,14 @@
     become_method: su
     become_user: keystone
     become_flags: '-s /bin/sh'
+
+  - name: Initialize Fernet key repositories command1
+    command: keystone-manage fernet_setup --keystone-user keystone --keystone-group keystone
+    register: keystoneconfoutput3
+
+  - name: Initialize Fernet key repositories command2
+    command: keystone-manage credential_setup --keystone-user keystone --keystone-group keystone
+    register: keystoneconfoutput4
 
   - name: Limiting the Number of Entities in a Collection
     command: openstack-config --set /etc/keystone/keystone.conf assignment list_limit 100
@@ -198,6 +212,39 @@
       line: "export OS_AUTH_URL=http://{{ansible_hostname}}:35357/v2.0/"
       line: "export PS1='[\u@\h \W(keystone_admin)]\$ '"
 
+  - name: create openstack endpoint in region one
+    sudo: no   
+    shell: source /root/keystonerc_admin && openstack endpoint create --region RegionOne --publicurl http://{{ansible_hostname}}:5000 --adminurl http://{{ansible_hostname}}:35357 --internalurl http://{{ansible_hostname}}:5000 keystone
+    args:
+       executable: /bin/bash
+
+  - name: create openstack project admin and services
+    sudo: no
+    shell: source /root/keystonerc_admin && openstack project create admin && openstack project create --description "Services Tenant" services
+    args:
+       executable: /bin/bash
+
+  - name: Set the value of sql_connection configuration key in glance conf files
+    command: openstack-config --set /etc/glance/glance-{{item}}.conf DEFAULT sql_connection mysql://glance:{{OPENSTACK_USERS_PASS}}@{{ansible_hostname}}/glance
+    with_items:
+         - api
+         - registry
+
+  - name: create openstack glance user
+    sudo: no
+    shell: source /root/keystonerc_admin && openstack user create --password {{OPENSTACK_USERS_PASS}} glance && openstack role add --project services --user
+glance admin && openstack service create --name glance --description "Glance Service" image
+    args:
+       executable: /bin/bash
+
+  - name: create openstack service glance endpoint
+    sudo: no
+    shell: source /root/keystonerc_admin && openstack endpoint create --publicurl 'http://{{ansible_hostname}}:9292' --adminurl 'http://{{ansible_hostname}}:9292' --internalurl 'http://{{ansible_hostname}}:9292' --region RegionOne glance
+    args:
+       executable: /bin/bash
+
+## completed till h.4.2 
+## not doing swift
   handlers:
    -name: restart iptables service
     service:
