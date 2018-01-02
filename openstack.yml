@@ -6,7 +6,9 @@
     yum:
       name: mariadb-galera-server
       state: installed
-  - iptables: 
+
+  - name: Add iptables rule for Mariadb
+    iptables: 
       chain: INPUT
       protocol: tcp
       action: append
@@ -14,10 +16,188 @@
       destination_port: 3306
       jump: ACCEPT
     notify: restart iptables
-   -name: restart mariadb service
+
+  - name: restart mariadb service
     service:
       name: mariadb
       state: restarted
+
+  - name: Changing root password for all root accounts
+    mysql_user: name=root host={{ item }} password={{ mysql_root_password }}
+    with_items:
+        - $ansible_hostname
+        - 127.0.0.1
+        - ::1
+        - localhost
+
+  - name: delete anonymous MySQL server user for $server_hostname
+    action: mysql_user user="" host=$server_hostname  state="absent"
+
+  - name: delete anonymous MySQL server user for localhost
+    action: mysql_user user="" state="absent"
+
+  - name: Install rabbitmq-server  package
+    yum:
+      name: rabbitmq-server
+      state: installed
+
+  - name: Add iptables rule for rabbitmq
+    iptables:
+      chain: INPUT
+      protocol: tcp
+      action: append
+      match: tcp
+      destination_port: 5672
+      jump: ACCEPT
+    notify: restart iptables
+
+  - name: restart mariadb service
+    service:
+      name: mariadb
+      state: restarted
+
+  - name: enable mariadb service
+    service:
+      name: mariadb
+      state: enabled
+
+  - name: change rabbitmq guest user password
+    rabbitmq_user:
+    user: guest
+    password: {{ NEW_RABBITMQ_PASS }}
+    force: yes
+    state: present
+
+  - name: add openstack users to rabbitmq
+    rabbitmq_user:
+    user: {{item}}
+    password: {{ RABBITMQ_USERS_PASS }}
+    vhost: /
+    configure_priv: .*
+    read_priv: .*
+    write_priv: .*
+    state: present
+    with_items:
+         - cinder
+         - nova
+         - heat
+         - glance
+         - ceilometer
+         - neutron
+  - name: Install the OpenStack Command Line Client
+     yum:
+      name: python-openstackclient
+      state: installed
+  - name: Install identity service packages
+     yum:
+      name: {{item}}
+      state: installed
+      with_items:
+           - openstack-keystone 
+           - openstack-utils
+           - openstack-selinux
+           - httpd
+           - mod_wsgi
+
+  - name: Create a new databases with openstack services name
+    mysql_db:
+    name: {{item}}
+    state: present
+    with_items:
+         - cinder
+         - nova
+         - heat
+         - glance
+         - ceilometer
+         - neutron
+         - keystone
+
+  - name: create openstack services users with permission
+    mysql_user:
+    name: {{item}}
+    password: {{OPENSTACK_USERS_PASS}}
+    priv: '{{item}}.*:ALL,GRANT'
+    state: present
+    with_items:
+         - cinder
+         - nova
+         - heat
+         - glance
+         - ceilometer
+         - neutron
+         - keystone
+  - name: Configuring the Identity Service SQL Database Connection
+    command: openstack-config --set /etc/keystone/keystone.conf sql connection mysql://keystone:{{OPENSTACK_USERS_PASS}}@{{ansible_hostname}}/keystone
+    register: keystoneconfoutput
+
+  - name: Configuring the Fernet token provider for keystone
+    command: openstack-config --set /etc/keystone/keystone.conf token provider fernet
+    register: keystoneconfoutput2
+
+  - name: Configuring the Firewall to Allow Identity Service Traffic
+    iptables:
+      chain: INPUT
+      protocol: tcp
+      action: append
+      match: multiport
+      destination_port: 5000,35357
+      jump: ACCEPT
+    notify: restart iptables
+
+  - name: Ensure that the keystone user owns the /var/log/keyston
+    file:
+    path: /var/log/keystone
+    state: directory
+    owner: keystone
+    group: keystone
+    recurse: yes
+
+  - name: Populating the Identity Service Database keystone-manage db_sync
+    command: keystone-manage db_sync
+    become: true
+    become_method: su
+    become_user: keystone
+    become_flags: '-s /bin/sh'
+
+  - name: Limiting the Number of Entities in a Collection
+    command: openstack-config --set /etc/keystone/keystone.conf assignment list_limit 100
+
+  - name: Configuring the Appache HTTP server add ServerName to conf file
+    lineinfile:
+      path: /etc/httpd/conf/httpd.conf
+      line: 'ServerName {{ansible_hostname}}'
+      state: present
+
+  - name: Configuring the Appache HTTP server add link conf files
+    file:
+      src: /usr/share/keystone/wsgi-keystone.conf
+      dest: /etc/httpd/conf.d
+      state: link
+
+  - name: start apache service
+    service:
+      name: httpd
+      state: restarted
+
+  - name: enable apache service
+    service:
+      name: httpd
+      state: enabled
+
+  - name: Create an admin user, role, and tenant
+    command: keystone-manage bootstrap --bootstrap-password {{KEYSTONE_ADMIN_PASSWD}} --bootstrap-username admin --bootstrap-project-name admin --bootstrap-role-name admin --bootstrap-service-name keystone --bootstrap-region-id RegionOne --bootstrap-admin-url http://{{ansible_hostname}}:35357 --bootstrap-public-url http://{{ansible_hostname}}:5000 --bootstrap-internal-url http://{{ansible_hostname}}:5000
+
+  - name: create keystonerc_admin file
+    lineinfile:
+      path: /root/keystonerc_admin
+      state: present
+      create: yes
+      line: "export OS_USERNAME=admin"
+      line: "export OS_PROJECT_NAME=admin"
+      line: "export OS_PASSWORD={{KEYSTONE_ADMIN_PASSWD}}"
+      line: "export OS_AUTH_URL=http://{{ansible_hostname}}:35357/v2.0/"
+      line: "export PS1='[\u@\h \W(keystone_admin)]\$ '"
+
   handlers:
    -name: restart iptables service
     service:
