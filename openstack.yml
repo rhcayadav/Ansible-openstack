@@ -232,8 +232,7 @@
 
   - name: create openstack glance user
     sudo: no
-    shell: source /root/keystonerc_admin && openstack user create --password {{OPENSTACK_USERS_PASS}} glance && openstack role add --project services --user
-glance admin && openstack service create --name glance --description "Glance Service" image
+    shell: source /root/keystonerc_admin && openstack user create --password {{OPENSTACK_USERS_PASS}} glance && openstack role add --project services --user glance admin && openstack service create --name glance --description "Glance Service" image
     args:
        executable: /bin/bash
 
