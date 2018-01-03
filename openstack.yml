@@ -1,6 +1,11 @@
 ---
 - name: install openstack using ansible
   hosts: openstack
+  handlers:
+   - name: restart iptables service
+     service:
+       name: iptables
+       state: restarted
   tasks:
   - name: Install mariadb-galera-server  package
     yum:
@@ -244,11 +249,6 @@
 
 ## completed till h.4.2 
 ## not doing swift
-  handlers:
-   -name: restart iptables service
-    service:
-      name: iptables
-      state: restarted
     
   
 #    command: iptables -A INPUT -p tcp -m multiport --dports 3306 -j ACCEPT
