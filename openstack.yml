@@ -247,6 +247,66 @@
     args:
        executable: /bin/bash
 
+  - name: Configure the glance-api service
+    command: openstack-config --set /etc/glance/glance-api.conf {{item.name1}} {{item.name2}} {{item.name3}}
+    with_items:
+      - { name1: 'paste_deploy', name2: 'flavor', name3: 'keystone' }
+      - { name1: 'keystone_authtoken', name2: 'auth_host', name3: '{{ansible_hostname}}' }
+      - { name1: 'keystone_authtoken', name2: 'auth_port', name3: '35357' }
+      - { name1: 'keystone_authtoken', name2: 'auth_protocol', name3: 'http' }
+      - { name1: 'keystone_authtoken', name2: 'admin_tenant_name', name3: 'services' }
+      - { name1: 'keystone_authtoken', name2: 'admin_user', name3: 'glance' }
+      - { name1: 'keystone_authtoken', name2: 'admin_password', name3: '{{KEYSTONE_ADMIN_PASSWD}}' }
+
+  - name: Configure the glance-registry service
+    command: openstack-config --set /etc/glance/glance-registry.conf {{item.name1}} {{item.name2}} {{item.name3}}
+    with_items:
+      - { name1: 'paste_deploy', name2: 'flavor', name3: 'keystone' }
+      - { name1: 'keystone_authtoken', name2: 'auth_host', name3: '{{ansible_hostname}}' }
+      - { name1: 'keystone_authtoken', name2: 'auth_port', name3: '35357' }
+      - { name1: 'keystone_authtoken', name2: 'auth_protocol', name3: 'http' }
+      - { name1: 'keystone_authtoken', name2: 'admin_tenant_name', name3: 'services' }
+      - { name1: 'keystone_authtoken', name2: 'admin_user', name3: 'glance' }
+      - { name1: 'keystone_authtoken', name2: 'admin_password', name3: '{{KEYSTONE_ADMIN_PASSWD}}' }
+
+
+  - name: Configuring the Firewall to Allow Image Service Traffic in glance-api.conf
+    lineinfile:
+      path: /etc/glance/glance-api.conf
+      state: present
+      create: yes
+      line: "bind_host = 0.0.0.0"
+      line: "bind_port = 9292"
+
+  - name: Configuring the Firewall to Allow Identity Service Traffic
+    iptables:
+      chain: INPUT
+      protocol: tcp
+      action: append
+      match: multiport
+      destination_port: 9292
+      jump: ACCEPT
+    notify: restart iptables
+
+  - name: Configure RabbitMQ Message Broker Settings for the Image Service in /etc/glance/glance-api.conf
+    command: openstack-config --set /etc/glance/glance-api.conf {{item.name1}} {{item.name2}} {{item.name3}}
+    with_items:
+      - { name1: 'DEFAULT', name2: 'notification_driver', name3: 'messaging' }
+      - { name1: 'DEFAULT', name2: 'rabbit_host', name3: 'RABBITMQ_HOST' }
+      - { name1: 'DEFAULT', name2: 'rabbit_port', name3: '5672' }
+      - { name1: 'DEFAULT', name2: 'rabbit_userid', name3: 'glance' }
+      - { name1: 'DEFAULT', name2: 'rabbit_password', name3: 'GLANCE_PASS' }
+      - { name1: 'DEFAULT', name2: 'rabbit_virtual_host', name3: '/' }
+
+  - name: Populating the Image Service Database
+    command: glance-manage db_sync
+    become: true
+    become_method: su
+    become_user: glance
+    become_flags: '-s /bin/sh'
+
+
+
 ## completed till h.4.2 
 ## not doing swift
     
