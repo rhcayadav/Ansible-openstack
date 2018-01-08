@@ -305,6 +305,57 @@
     become_user: glance
     become_flags: '-s /bin/sh'
 
+  - name: Create a unique ID for the mount point
+    command: uuidgen
+    register: UID
+
+  - name: Create a file with the json extension
+    blockinfile:
+      path: /root/uid.json
+      block: |
+        {
+        "id": "{{UID}}"
+        "mountpoint": "/"
+        }
+  - name: Configure the Image service to use this JSON file command1
+    command: openstack-config --set /etc/glance/glance-api.conf DEFAULT show_multiple_locations True
+
+  - name: Configure the Image service to use this JSON file command2
+    command: openstack-config --set /etc/glance/glance-api.conf DEFAULT filesystem_store_metadata_file  /root/uid.json
+
+  - name: find FILESYSTEM var value
+    command: df -hT |awk '{print $1}' | grep /dev/ | grep 1
+    register: FILESYSTEM
+
+  - name: Configure RabbitMQ Message Broker Settings for the Image Service in /etc/glance/glance-api.conf
+    command: openstack-config --set /etc/glance/glance-api.conf {{item.name1}} {{item.name2}} {{item.name3}}
+    with_items:
+      - { name1: 'DEFAULT', name2: 'allowed_direct_url_schemes', name3: 'file' }
+      - { name1: 'image_file_url', name2: 'filesystems', name3: '{{FILESYSTEM}}' }
+      - { name1: 'image_file_url:{{FILESYSTEM}}', name2: 'id', name3: '{{UID}}' }
+      - { name1: 'image_file_url:{{FILESYSTEM}}', name2: 'mountpoint', name3: '/' }
+
+  - name: restart service openstack-glance-registry
+    service:
+      name: openstack-glance-registry
+      state: restarted
+
+  - name: restart service openstack-glance-api
+    service:
+      name: openstack-glance-api
+      state: restarted
+
+  - name: enable service openstack-glance-registry
+    service:
+      name: openstack-glance-registry
+      state: enabled
+
+  - name: enable service openstack-glance-api
+    service:
+      name: openstack-glance-api
+      state: enabled
+
+
 
 
 ## completed till h.4.2 
